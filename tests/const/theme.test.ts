@@ -1,6 +1,16 @@
 import {ThemeMap, sanitizeHexColor, parseThemeColorOverride, resolveTheme} from '../../src/const/theme';
 
 describe('Validate all theme', () => {
+    it('includes the unified charcoal profile palette', () => {
+        const theme = ThemeMap.get('dxnnystyles')!;
+        expect(theme.background).toBe('#161b22');
+        expect(theme.stroke).toBe('#30363d');
+        expect(theme.title).toBe('#d97757');
+        expect(theme.text).toBe('#c9d1d9');
+        expect(theme.icon).toBe('#8b949e');
+        expect(theme.chart).toBe('#3fb950');
+    });
+
     it('theme colors are match the color regex', () => {
         // We validate short hex color, hex color and RGBA hex
         const colorRegex = /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3}|[A-Fa-f0-9]{8})$/;

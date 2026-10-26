@@ -4,14 +4,22 @@ import * as d3 from 'd3';
 import * as d3Axis from 'd3-axis';
 
 export function createProductiveCard(chartData: number[], theme: Theme, utcOffset: number, timeZone?: string) {
-    const title = timeZone
-        ? `Commits (${timeZone})`
-        : 'Commits ' + '(UTC ' + (utcOffset >= 0 ? '+' : '') + utcOffset.toFixed(2) + ')';
-    const card = new Card(title, 340, 200, theme);
+    const title = 'Commits by Hour';
+    const timeLabel = timeZone ? `Hour · ${timeZone}` : `Hour · UTC${utcOffset >= 0 ? '+' : ''}${utcOffset.toFixed(2)}`;
+    const card = new Card(
+        title,
+        340,
+        200,
+        theme,
+        30,
+        40,
+        `Hourly commit counts over the trailing year, grouped by ${timeZone ?? `UTC offset ${utcOffset}`}. The 24 bars represent hours of the day.`
+    );
     const svg = card.getSVG();
 
     const chartWidth = card.width - 60;
-    const chartHeight = 100;
+    // Leave a dedicated footnote row for the time-zone label beneath the hour axis.
+    const chartHeight = 80;
     const bottomScaleBand = d3.scaleBand<number>().range([0, chartWidth]).padding(0.1);
     const bottomAxis: d3Axis.Axis<number> = d3Axis.axisBottom(bottomScaleBand);
 
@@ -87,11 +95,11 @@ export function createProductiveCard(chartData: number[], theme: Theme, utcOffse
     chartPanel
         .append('g')
         .append('text')
-        .text('per day hour')
-        .attr('y', 130)
-        .attr('x', 220)
+        .text(timeLabel)
+        .attr('y', 126)
+        .attr('x', 105)
         .style('fill', theme.text)
-        .style('font-size', `10px`);
+        .style('font-size', `9px`);
 
     return card.toString();
 }

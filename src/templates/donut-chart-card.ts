@@ -12,7 +12,19 @@ export function createDonutChartCard(
         return d.value;
     });
     const pieData = pie(data);
-    const card = new Card(title, 340, 200, theme);
+    const chartKind = title.includes('Repo')
+        ? 'public repository language distribution'
+        : 'commit language distribution';
+    const categories = data.map(item => item.name).join(', ');
+    const card = new Card(
+        title,
+        340,
+        200,
+        theme,
+        30,
+        40,
+        `Donut chart of ${chartKind}. Shown language categories: ${categories || 'no data available'}.`
+    );
 
     const margin = 10;
     const radius = (Math.min(card.width, card.height) - 2 * margin - card.yPadding) / 2;

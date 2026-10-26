@@ -11,6 +11,14 @@ describe('stats card template', () => {
         expect(svg).toContain(Icon.GITHUB);
     });
 
+    it('adds accessible SVG naming and a data summary', () => {
+        const svg = createStatsCard('Stats', statsData, theme);
+        expect(svg).toContain('role="img"');
+        expect(svg).toContain('aria-labelledby="gpsc-card-title gpsc-card-description"');
+        expect(svg).toContain('<title id="gpsc-card-title">Stats</title>');
+        expect(svg).toContain('Total Stars 42');
+    });
+
     it('omits the GitHub logo when hideLogo is set', () => {
         const svg = createStatsCard('Stats', statsData, theme, true);
         expect(svg).not.toContain(Icon.GITHUB);

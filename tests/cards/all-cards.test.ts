@@ -41,6 +41,10 @@ describe('Cards Generation (Integration)', () => {
         (getProfileDetails as jest.Mock).mockResolvedValue({
             name: 'Test User',
             email: 'test@example.com',
+            company: 'Test Company',
+            location: 'Test Location',
+            websiteUrl: 'https://private.example',
+            twitterUsername: 'private_handle',
             contributionYears: [2024],
             totalPublicRepos: 10,
             totalStars: 100,
@@ -98,6 +102,16 @@ describe('Cards Generation (Integration)', () => {
             '0-profile-details',
             expect.stringContaining('<svg')
         );
+    });
+
+    it('suppresses personal and contact metadata from Profile Details output', async () => {
+        await createProfileDetailsCard(USERNAME, TOKEN, {theme: 'dxnnystyles'});
+        const svg = mockWriteSVG.mock.calls.find((call: unknown[]) => call[1] === '0-profile-details')?.[2] as string;
+        expect(svg).toContain('Contributions on GitHub');
+        expect(svg).toContain('Public Repos');
+        expect(svg).toContain('Joined GitHub');
+        expect(svg).not.toMatch(/test@example\.com|Test Company|Test Location|private\.example|private_handle/i);
+        expect(svg).not.toMatch(/Email|Company|Location|Website|Twitter/i);
     });
 
     it('createReposPerLanguageCard should write SVG', async () => {

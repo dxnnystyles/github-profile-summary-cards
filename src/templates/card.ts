@@ -15,7 +15,15 @@ export class Card {
     yPadding: number;
     body: d3.Selection<d3.ContainerElement, any, null, undefined>;
     svg: d3.Selection<SVGSVGElement, any, null, undefined>;
-    constructor(title = 'Title', width = 1280, height = 1024, theme: Theme, xPadding = 30, yPadding = 40) {
+    constructor(
+        title = 'Title',
+        width = 1280,
+        height = 1024,
+        theme: Theme,
+        xPadding = 30,
+        yPadding = 40,
+        description = `${title} GitHub profile summary card.`
+    ) {
         this.title = title;
         this.width = width;
         this.height = height;
@@ -32,6 +40,9 @@ export class Card {
             .attr('width', width)
             .attr('height', height)
             .attr('viewBox', `0 0 ${this.width} ${this.height}`);
+        svgRoot.attr('role', 'img').attr('aria-labelledby', 'gpsc-card-title gpsc-card-description');
+        svgRoot.append('title').attr('id', 'gpsc-card-title').text(title.replace(/\n/g, ' '));
+        svgRoot.append('desc').attr('id', 'gpsc-card-description').text(description);
         svgRoot.append('style').html(
             `* {
           font-family: 'Segoe UI', Ubuntu, "Helvetica Neue", Sans-Serif

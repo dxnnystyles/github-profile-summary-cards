@@ -5,12 +5,7 @@ import {withDataCache, kvGetFlag, kvSetFlag, requestStartedAt} from '../utils/da
 export class ProfileDetails {
     id: number; // user id
     name: string;
-    email: string;
     createdAt: string;
-    company: string | null = null;
-    websiteUrl: string | null = null;
-    twitterUsername: string | null = null;
-    location: string | null = null;
     totalPublicRepos: number = 0;
     totalStars: number = 0;
     totalIssueContributions: number = 0;
@@ -18,10 +13,9 @@ export class ProfileDetails {
     totalRepositoryContributions: number = 0;
     contributions: ProfileContribution[] = [];
     contributionYears: number[] = [];
-    constructor(id: number, name: string, email: string, createdAt: string) {
+    constructor(id: number, name: string, createdAt: string) {
         this.id = id;
         this.name = name;
-        this.email = email;
         this.createdAt = createdAt;
     }
 }
@@ -48,12 +42,7 @@ const fetcher = (token: string, variables: any) => {
         user(login: $login) {
             id
             name
-            email
             createdAt
-            twitterUsername
-            company
-            location
-            websiteUrl
             repositories(first: 1, privacy:PUBLIC, isFork: false, ownerAffiliations: OWNER) {
               totalCount
             }
@@ -104,12 +93,7 @@ const coreFetcher = (token: string, variables: any) => {
         user(login: $login) {
             id
             name
-            email
             createdAt
-            twitterUsername
-            company
-            location
-            websiteUrl
             repositories(first: 1, privacy:PUBLIC, isFork: false, ownerAffiliations: OWNER) {
               totalCount
             }
@@ -276,12 +260,7 @@ interface CompactProfilePayload {
     core: {
         id: number;
         name: string;
-        email: string;
         createdAt: string;
-        twitterUsername: string | null;
-        company: string | null;
-        location: string | null;
-        websiteUrl: string | null;
     };
     totalPublicRepos: number;
     totalStars: number;
@@ -311,12 +290,7 @@ function compressProfile(user: any, totalStars: number): CompactProfilePayload {
         core: {
             id: user.id,
             name: user.name,
-            email: user.email,
-            createdAt: user.createdAt,
-            twitterUsername: user.twitterUsername,
-            company: user.company,
-            location: user.location,
-            websiteUrl: user.websiteUrl
+            createdAt: user.createdAt
         },
         totalPublicRepos: user.repositories.totalCount,
         totalStars,
@@ -386,7 +360,8 @@ export async function getProfileDetails(username: string, token: string): Promis
     // Cache a COMPACT payload per username (see compressProfile). The
     // ProfileDetails instance (with real Date objects) is built after the
     // cache boundary so only plain JSON is ever stored.
-    const compact = await withDataCache(`v2:pd:${username.toLowerCase()}`, async () => {
+    // v3 omits contact metadata from both requests and cached payloads.
+    const compact = await withDataCache(`v3:pd:${username.toLowerCase()}`, async () => {
         // Measure from the REQUEST start (rotation retries share the deadline);
         // outside a request context (Action/CLI) fall back to a local clock.
         const startedAt = requestStartedAt() ?? Date.now();
@@ -431,16 +406,12 @@ export async function getProfileDetails(username: string, token: string): Promis
     });
 
     const {core} = compact;
-    const profileDetails = new ProfileDetails(core.id, core.name, core.email, core.createdAt);
+    const profileDetails = new ProfileDetails(core.id, core.name, core.createdAt);
     profileDetails.totalPublicRepos = compact.totalPublicRepos;
     profileDetails.totalStars = compact.totalStars;
-    profileDetails.websiteUrl = core.websiteUrl;
     profileDetails.totalIssueContributions = compact.issues;
     profileDetails.totalPullRequestContributions = compact.prs;
     profileDetails.totalRepositoryContributions = compact.contributedTo;
-    profileDetails.company = core.company;
-    profileDetails.location = core.location;
-    profileDetails.twitterUsername = core.twitterUsername;
     profileDetails.contributionYears = compact.years;
     profileDetails.contributions = expandContributions(compact.cal);
 

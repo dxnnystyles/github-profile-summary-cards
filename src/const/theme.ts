@@ -55,6 +55,10 @@ ThemeMap.set('discord_old_blurple', new Theme('#7289da', '#ffffff', '#2c2f33', '
 ThemeMap.set('dracula', new Theme('#ff79c6', '#ffb86c', '#282a36', '#282a36', 1, '#6272a4', '#bd93f9'));
 ThemeMap.set('flag_india', new Theme('#ff8f1c', '#509e2f', '#ffffff', '#000000', 0, '#250e62', '#ff8f1c'));
 ThemeMap.set('github_dark', new Theme('#0366d6', '#77909c', '#0d1117', '#2e343b', 1, '#8b949e', '#40c463'));
+// Unified five-card profile theme: neutral charcoal surfaces, readable labels,
+// warm orange titles, and GitHub-green contribution bars. Language cards keep
+// the colors supplied by GitHub's language-color data.
+ThemeMap.set('dxnnystyles', new Theme('#d97757', '#c9d1d9', '#161b22', '#30363d', 1, '#8b949e', '#3fb950'));
 ThemeMap.set('github', new Theme('#0366d6', '#586069', '#ffffff', '#e4e2e2', 1, '#586069', '#40c463'));
 ThemeMap.set('gotham', new Theme('#2aa889', '#99d1ce', '#0c1014', '#000000', 1, '#599cab', '#2aa889'));
 ThemeMap.set('graywhite', new Theme('#24292e', '#24292e', '#ffffff', '#000000', 0, '#24292e', '#24292e'));

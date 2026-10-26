@@ -96,7 +96,7 @@ describe('productive time time-zone bucketing', () => {
         expect(mockGetProductiveTime.mock.calls[0]).toEqual(mockGetProductiveTime.mock.calls[1]);
     });
 
-    it('writes the time-zone title when generating a card', async () => {
+    it('writes the concise title and visible time zone when generating a card', async () => {
         mockGetProductiveTime.mockResolvedValue(commitDates('2024-01-15T10:30:00Z'));
 
         await createProductiveTimeCard('octocat', 0, 'token', {theme: 'default'}, 'Europe/Zurich');
@@ -104,7 +104,7 @@ describe('productive time time-zone bucketing', () => {
         expect(mockWriteSVG).toHaveBeenCalledWith(
             'default',
             '4-productive-time',
-            expect.stringContaining('Commits (Europe/Zurich)')
+            expect.stringContaining('Hour · Europe/Zurich')
         );
     });
 });

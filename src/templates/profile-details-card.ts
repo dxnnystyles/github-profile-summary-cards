@@ -18,12 +18,20 @@ export function createDetailCard(
     // space; grow the canvas to match so the details rows, chart and caption don't
     // get pushed off the bottom of the (otherwise fixed) 200-px card.
     const extraTitleLines = Math.max(0, title.split('\n').length - 1);
-    const card = new Card(title, 700, 200 + extraTitleLines * TITLE_LINE_HEIGHT, theme);
+    const card = new Card(
+        title,
+        700,
+        200 + extraTitleLines * TITLE_LINE_HEIGHT,
+        theme,
+        30,
+        40,
+        'Public GitHub profile details showing account age, public repository count, and daily contribution activity over the last year.'
+    );
     const svg = card.getSVG();
 
     // draw icon
     const panel = svg.append('g').attr('transform', `translate(30,30)`);
-    const labelHeight = 14;
+    const labelHeight = 16;
     // Each detail row (icon + value) is an animatable item sharing --gpsc-i, so rows
     // reveal one at a time. The icon's SVG translate lives on an inner group so the
     // transform-free `.gpsc-item` wrapper can be safely CSS-transformed.
@@ -168,9 +176,7 @@ export function createDetailCard(
         .tickFormat(d3.timeFormat('%y/%m'))
         .tickValues(
             lineChartData
-                .filter((_, i) => {
-                    return i % 2 === 0;
-                })
+                .filter((_, i) => i % 4 === 0)
                 .map(d => {
                     return d.date;
                 })
@@ -180,14 +186,16 @@ export function createDetailCard(
         .append('g')
         .attr('color', theme.text)
         .attr('transform', `translate(${-chartRightMargin},${chartHeight})`)
-        .call(xAxis);
+        .call(xAxis)
+        .attr('font-size', '12px');
 
     // Add the Y Axis
     chartPanel
         .append('g')
         .attr('color', theme.text)
         .attr('transform', `translate(${chartWidth - chartRightMargin},0)`)
-        .call(d3.axisRight(y).ticks(8));
+        .call(d3.axisRight(y).ticks(5))
+        .attr('font-size', '12px');
 
     // Caption goes above the chart for short titles, below the chart for tall/long titles
     // (multi-line titles push the chart down and the caption would otherwise overlap them).

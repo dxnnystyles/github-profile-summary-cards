@@ -58,6 +58,7 @@ const file_writer_1 = __nccwpck_require__(65336);
 const theme_1 = __nccwpck_require__(41109);
 const animation_1 = __nccwpck_require__(21748);
 const time_zone_1 = __nccwpck_require__(91544);
+const fs_1 = __nccwpck_require__(79896);
 const execCmd = (cmd, args = []) => new Promise((resolve, reject) => {
     const app = (0, child_process_1.spawn)(cmd, args, { stdio: 'pipe' });
     let stdout = '';
@@ -209,7 +210,8 @@ const action = () => __awaiter(void 0, void 0, void 0, function* () {
     try {
         // Remove old output
         core.info(`Remove old cards...`);
-        yield execCmd('sudo', ['rm', '-rf', file_writer_1.OUTPUT_PATH]);
+        (0, file_writer_1.assertSafeOutputPath)();
+        (0, fs_1.rmSync)(file_writer_1.OUTPUT_PATH, { recursive: true, force: true });
         let ownerType;
         try {
             ownerType = yield (0, owner_type_1.getOwnerType)(username, process.env.GITHUB_TOKEN);
@@ -961,31 +963,6 @@ const getProfileDetailsData = function (username, token) {
                 value: `Joined GitHub ${getProfileDateJoined(profileDetails)}`
             }
         ];
-        // hard code here, cuz I'm lazy
-        if (profileDetails.email) {
-            userDetails.push({
-                index: 3,
-                icon: icon_1.Icon.EMAIL,
-                name: 'Email',
-                value: profileDetails['email']
-            });
-        }
-        else if (profileDetails.company) {
-            userDetails.push({
-                index: 3,
-                icon: icon_1.Icon.COMPANY,
-                name: 'Company',
-                value: profileDetails['company']
-            });
-        }
-        else if (profileDetails.location) {
-            userDetails.push({
-                index: 3,
-                icon: icon_1.Icon.LOCATION,
-                name: 'Location',
-                value: profileDetails['location']
-            });
-        }
         return [profileDetails, userDetails];
     });
 };
@@ -1993,6 +1970,10 @@ exports.ThemeMap.set('discord_old_blurple', new Theme('#7289da', '#ffffff', '#2c
 exports.ThemeMap.set('dracula', new Theme('#ff79c6', '#ffb86c', '#282a36', '#282a36', 1, '#6272a4', '#bd93f9'));
 exports.ThemeMap.set('flag_india', new Theme('#ff8f1c', '#509e2f', '#ffffff', '#000000', 0, '#250e62', '#ff8f1c'));
 exports.ThemeMap.set('github_dark', new Theme('#0366d6', '#77909c', '#0d1117', '#2e343b', 1, '#8b949e', '#40c463'));
+// Unified five-card profile theme: neutral charcoal surfaces, readable labels,
+// warm orange titles, and GitHub-green contribution bars. Language cards keep
+// the colors supplied by GitHub's language-color data.
+exports.ThemeMap.set('dxnnystyles', new Theme('#d97757', '#c9d1d9', '#161b22', '#30363d', 1, '#8b949e', '#3fb950'));
 exports.ThemeMap.set('github', new Theme('#0366d6', '#586069', '#ffffff', '#e4e2e2', 1, '#586069', '#40c463'));
 exports.ThemeMap.set('gotham', new Theme('#2aa889', '#99d1ce', '#0c1014', '#000000', 1, '#599cab', '#2aa889'));
 exports.ThemeMap.set('graywhite', new Theme('#24292e', '#24292e', '#ffffff', '#000000', 0, '#24292e', '#24292e'));
@@ -3217,11 +3198,7 @@ const request_1 = __importStar(__nccwpck_require__(40007));
 const pagination_1 = __nccwpck_require__(46370);
 const data_cache_1 = __nccwpck_require__(59859);
 class ProfileDetails {
-    constructor(id, name, email, createdAt) {
-        this.company = null;
-        this.websiteUrl = null;
-        this.twitterUsername = null;
-        this.location = null;
+    constructor(id, name, createdAt) {
         this.totalPublicRepos = 0;
         this.totalStars = 0;
         this.totalIssueContributions = 0;
@@ -3231,7 +3208,6 @@ class ProfileDetails {
         this.contributionYears = [];
         this.id = id;
         this.name = name;
-        this.email = email;
         this.createdAt = createdAt;
     }
 }
@@ -3255,12 +3231,7 @@ const fetcher = (token, variables) => {
         user(login: $login) {
             id
             name
-            email
             createdAt
-            twitterUsername
-            company
-            location
-            websiteUrl
             repositories(first: 1, privacy:PUBLIC, isFork: false, ownerAffiliations: OWNER) {
               totalCount
             }
@@ -3306,12 +3277,7 @@ const coreFetcher = (token, variables) => {
         user(login: $login) {
             id
             name
-            email
             createdAt
-            twitterUsername
-            company
-            location
-            websiteUrl
             repositories(first: 1, privacy:PUBLIC, isFork: false, ownerAffiliations: OWNER) {
               totalCount
             }
@@ -3466,12 +3432,7 @@ function compressProfile(user, totalStars) {
         core: {
             id: user.id,
             name: user.name,
-            email: user.email,
-            createdAt: user.createdAt,
-            twitterUsername: user.twitterUsername,
-            company: user.company,
-            location: user.location,
-            websiteUrl: user.websiteUrl
+            createdAt: user.createdAt
         },
         totalPublicRepos: user.repositories.totalCount,
         totalStars,
@@ -3540,7 +3501,8 @@ function getProfileDetails(username, token) {
         // Cache a COMPACT payload per username (see compressProfile). The
         // ProfileDetails instance (with real Date objects) is built after the
         // cache boundary so only plain JSON is ever stored.
-        const compact = yield (0, data_cache_1.withDataCache)(`v2:pd:${username.toLowerCase()}`, () => __awaiter(this, void 0, void 0, function* () {
+        // v3 omits contact metadata from both requests and cached payloads.
+        const compact = yield (0, data_cache_1.withDataCache)(`v3:pd:${username.toLowerCase()}`, () => __awaiter(this, void 0, void 0, function* () {
             var _a;
             // Measure from the REQUEST start (rotation retries share the deadline);
             // outside a request context (Action/CLI) fall back to a local clock.
@@ -3585,16 +3547,12 @@ function getProfileDetails(username, token) {
             return compressProfile(fetchedUser, totalStars);
         }));
         const { core } = compact;
-        const profileDetails = new ProfileDetails(core.id, core.name, core.email, core.createdAt);
+        const profileDetails = new ProfileDetails(core.id, core.name, core.createdAt);
         profileDetails.totalPublicRepos = compact.totalPublicRepos;
         profileDetails.totalStars = compact.totalStars;
-        profileDetails.websiteUrl = core.websiteUrl;
         profileDetails.totalIssueContributions = compact.issues;
         profileDetails.totalPullRequestContributions = compact.prs;
         profileDetails.totalRepositoryContributions = compact.contributedTo;
-        profileDetails.company = core.company;
-        profileDetails.location = core.location;
-        profileDetails.twitterUsername = core.twitterUsername;
         profileDetails.contributionYears = compact.years;
         profileDetails.contributions = expandContributions(compact.cal);
         return profileDetails;
@@ -3838,7 +3796,7 @@ const jsdom_1 = __nccwpck_require__(14726);
 // amount instead of letting extra lines push content off the bottom.
 exports.TITLE_LINE_HEIGHT = 24;
 class Card {
-    constructor(title = 'Title', width = 1280, height = 1024, theme, xPadding = 30, yPadding = 40) {
+    constructor(title = 'Title', width = 1280, height = 1024, theme, xPadding = 30, yPadding = 40, description = `${title} GitHub profile summary card.`) {
         this.title = title;
         this.width = width;
         this.height = height;
@@ -3855,6 +3813,9 @@ class Card {
             .attr('width', width)
             .attr('height', height)
             .attr('viewBox', `0 0 ${this.width} ${this.height}`);
+        svgRoot.attr('role', 'img').attr('aria-labelledby', 'gpsc-card-title gpsc-card-description');
+        svgRoot.append('title').attr('id', 'gpsc-card-title').text(title.replace(/\n/g, ' '));
+        svgRoot.append('desc').attr('id', 'gpsc-card-description').text(description);
         svgRoot.append('style').html(`* {
           font-family: 'Segoe UI', Ubuntu, "Helvetica Neue", Sans-Serif
         }`);
@@ -3949,7 +3910,11 @@ function createDonutChartCard(title, data, theme) {
         return d.value;
     });
     const pieData = pie(data);
-    const card = new card_1.Card(title, 340, 200, theme);
+    const chartKind = title.includes('Repo')
+        ? 'public repository language distribution'
+        : 'commit language distribution';
+    const categories = data.map(item => item.name).join(', ');
+    const card = new card_1.Card(title, 340, 200, theme, 30, 40, `Donut chart of ${chartKind}. Shown language categories: ${categories || 'no data available'}.`);
     const margin = 10;
     const radius = (Math.min(card.width, card.height) - 2 * margin - card.yPadding) / 2;
     const arc = d3
@@ -4050,13 +4015,13 @@ const card_1 = __nccwpck_require__(93664);
 const d3 = __importStar(__nccwpck_require__(13143));
 const d3Axis = __importStar(__nccwpck_require__(52255));
 function createProductiveCard(chartData, theme, utcOffset, timeZone) {
-    const title = timeZone
-        ? `Commits (${timeZone})`
-        : 'Commits ' + '(UTC ' + (utcOffset >= 0 ? '+' : '') + utcOffset.toFixed(2) + ')';
-    const card = new card_1.Card(title, 340, 200, theme);
+    const title = 'Commits by Hour';
+    const timeLabel = timeZone ? `Hour · ${timeZone}` : `Hour · UTC${utcOffset >= 0 ? '+' : ''}${utcOffset.toFixed(2)}`;
+    const card = new card_1.Card(title, 340, 200, theme, 30, 40, `Hourly commit counts over the trailing year, grouped by ${timeZone !== null && timeZone !== void 0 ? timeZone : `UTC offset ${utcOffset}`}. The 24 bars represent hours of the day.`);
     const svg = card.getSVG();
     const chartWidth = card.width - 60;
-    const chartHeight = 100;
+    // Leave a dedicated footnote row for the time-zone label beneath the hour axis.
+    const chartHeight = 80;
     const bottomScaleBand = d3.scaleBand().range([0, chartWidth]).padding(0.1);
     const bottomAxis = d3Axis.axisBottom(bottomScaleBand);
     if (chartData.length != 24) {
@@ -4112,11 +4077,11 @@ function createProductiveCard(chartData, theme, utcOffset, timeZone) {
     chartPanel
         .append('g')
         .append('text')
-        .text('per day hour')
-        .attr('y', 130)
-        .attr('x', 220)
+        .text(timeLabel)
+        .attr('y', 126)
+        .attr('x', 105)
         .style('fill', theme.text)
-        .style('font-size', `10px`);
+        .style('font-size', `9px`);
     return card.toString();
 }
 exports.createProductiveCard = createProductiveCard;
@@ -4161,11 +4126,11 @@ function createDetailCard(title, userDetails, contributionsData, theme, chartCap
     // space; grow the canvas to match so the details rows, chart and caption don't
     // get pushed off the bottom of the (otherwise fixed) 200-px card.
     const extraTitleLines = Math.max(0, title.split('\n').length - 1);
-    const card = new card_1.Card(title, 700, 200 + extraTitleLines * card_1.TITLE_LINE_HEIGHT, theme);
+    const card = new card_1.Card(title, 700, 200 + extraTitleLines * card_1.TITLE_LINE_HEIGHT, theme, 30, 40, 'Public GitHub profile details showing account age, public repository count, and daily contribution activity over the last year.');
     const svg = card.getSVG();
     // draw icon
     const panel = svg.append('g').attr('transform', `translate(30,30)`);
-    const labelHeight = 14;
+    const labelHeight = 16;
     // Each detail row (icon + value) is an animatable item sharing --gpsc-i, so rows
     // reveal one at a time. The icon's SVG translate lives on an inner group so the
     // transform-free `.gpsc-item` wrapper can be safely CSS-transformed.
@@ -4294,9 +4259,7 @@ function createDetailCard(title, userDetails, contributionsData, theme, chartCap
         .axisBottom(x)
         .tickFormat(d3.timeFormat('%y/%m'))
         .tickValues(lineChartData
-        .filter((_, i) => {
-        return i % 2 === 0;
-    })
+        .filter((_, i) => i % 4 === 0)
         .map(d => {
         return d.date;
     }));
@@ -4304,13 +4267,15 @@ function createDetailCard(title, userDetails, contributionsData, theme, chartCap
         .append('g')
         .attr('color', theme.text)
         .attr('transform', `translate(${-chartRightMargin},${chartHeight})`)
-        .call(xAxis);
+        .call(xAxis)
+        .attr('font-size', '12px');
     // Add the Y Axis
     chartPanel
         .append('g')
         .attr('color', theme.text)
         .attr('transform', `translate(${chartWidth - chartRightMargin},0)`)
-        .call(d3.axisRight(y).ticks(8));
+        .call(d3.axisRight(y).ticks(5))
+        .attr('font-size', '12px');
     // Caption goes above the chart for short titles, below the chart for tall/long titles
     // (multi-line titles push the chart down and the caption would otherwise overlap them).
     const titleIsTall = title.includes('\n') || title.length > 30;
@@ -4342,7 +4307,8 @@ function createStatsCard(title, statsData, theme, hideLogo = false) {
     // Without the logo the right side is dead space; shrink the card so it
     // actually frees room in side-by-side README layouts (#141): stat values
     // end around x=220, +30 to mirror the left margin.
-    const card = new card_1.Card(title, hideLogo ? 250 : 340, 200, theme);
+    const description = `GitHub account statistics: ${statsData.map(d => `${d.name.replace(/:$/, '')} ${d.value}`).join('; ')}.`;
+    const card = new card_1.Card(title, hideLogo ? 250 : 340, 200, theme, 30, 40, description);
     const svg = card.getSVG();
     // draw icon
     const panel = svg.append('g').attr('transform', `translate(30,20)`);
@@ -5252,11 +5218,35 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.generatePreviewMarkdown = exports.writeSVG = exports.OUTPUT_PATH = void 0;
+exports.generatePreviewMarkdown = exports.writeSVG = exports.assertSafeOutputPath = exports.OUTPUT_PATH = exports.resolveOutputPath = void 0;
 const core = __importStar(__nccwpck_require__(37484));
 const fs_1 = __nccwpck_require__(79896);
+const path_1 = __nccwpck_require__(16928);
+const os_1 = __nccwpck_require__(70857);
 const theme_1 = __nccwpck_require__(41109);
-exports.OUTPUT_PATH = './profile-summary-card-output/';
+function resolveOutputPath(configuredValue = process.env.SUMMARY_CARDS_OUTPUT_PATH, tempRootValue = process.env.RUNNER_TEMP || (0, os_1.tmpdir)(), requireTemporary = false) {
+    const configured = configuredValue === null || configuredValue === void 0 ? void 0 : configuredValue.trim();
+    if (!configured) {
+        if (requireTemporary)
+            throw new Error('GitHub Actions generation requires SUMMARY_CARDS_OUTPUT_PATH under RUNNER_TEMP.');
+        return './profile-summary-card-output/';
+    }
+    const target = (0, path_1.resolve)(configured);
+    const tempRoot = (0, path_1.resolve)(tempRootValue);
+    const rel = (0, path_1.relative)(tempRoot, target);
+    if (!(0, path_1.isAbsolute)(configured) || !rel || rel === '..' || rel.startsWith(`..${path_1.sep}`) || (0, path_1.isAbsolute)(rel)) {
+        throw new Error('SUMMARY_CARDS_OUTPUT_PATH must be a child directory of RUNNER_TEMP.');
+    }
+    return `${target}${path_1.sep}`;
+}
+exports.resolveOutputPath = resolveOutputPath;
+exports.OUTPUT_PATH = resolveOutputPath();
+function assertSafeOutputPath() {
+    if (process.env.GITHUB_ACTIONS === 'true') {
+        resolveOutputPath(process.env.SUMMARY_CARDS_OUTPUT_PATH, process.env.RUNNER_TEMP || (0, os_1.tmpdir)(), true);
+    }
+}
+exports.assertSafeOutputPath = assertSafeOutputPath;
 const GITHUB_REPOSITORY = process.env.GITHUB_REPOSITORY;
 // If neither a branch or tag is available for the event type, the variable will not exist. https://docs.github.com/en/actions/configuring-and-managing-workflows/using-environment-variables
 const GITHUB_BRANCH = process.env.GITHUB_REF == undefined

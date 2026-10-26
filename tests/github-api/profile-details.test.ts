@@ -80,15 +80,12 @@ describe('github api for profile details', () => {
         mock.onPost('https://api.github.com/graphql').reply(200, data);
         mockRestStars('vn7n24fzkq');
         const profileDetails = await getProfileDetails('vn7n24fzkq', 'token');
+        const query = JSON.parse(mock.history.post[0].data).query;
+        expect(query).not.toMatch(/\b(email|company|location|websiteUrl|twitterUsername)\b/);
         expect(profileDetails).toEqual({
             id: 'userID',
             name: 'vn7',
-            email: 'vn7n24fzkq@gmail.com',
             createdAt: '2016-07-01T10:46:25Z',
-            company: 'vn7',
-            location: 'Taiwan',
-            websiteUrl: null,
-            twitterUsername: null,
             contributionYears: [2019, 2020],
             totalPublicRepos: 30,
             totalStars: 130,

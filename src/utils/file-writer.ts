@@ -1,9 +1,37 @@
 import * as core from '@actions/core';
 import {mkdirSync, writeFileSync, readdirSync, existsSync} from 'fs';
+import {isAbsolute, relative, resolve, sep} from 'path';
+import {tmpdir} from 'os';
 import {ThemeMap} from '../const/theme';
 import {OwnerType} from '../github-api/owner-type';
 
-export const OUTPUT_PATH = './profile-summary-card-output/';
+export function resolveOutputPath(
+    configuredValue: string | undefined = process.env.SUMMARY_CARDS_OUTPUT_PATH,
+    tempRootValue: string = process.env.RUNNER_TEMP || tmpdir(),
+    requireTemporary = false
+): string {
+    const configured = configuredValue?.trim();
+    if (!configured) {
+        if (requireTemporary)
+            throw new Error('GitHub Actions generation requires SUMMARY_CARDS_OUTPUT_PATH under RUNNER_TEMP.');
+        return './profile-summary-card-output/';
+    }
+
+    const target = resolve(configured);
+    const tempRoot = resolve(tempRootValue);
+    const rel = relative(tempRoot, target);
+    if (!isAbsolute(configured) || !rel || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+        throw new Error('SUMMARY_CARDS_OUTPUT_PATH must be a child directory of RUNNER_TEMP.');
+    }
+    return `${target}${sep}`;
+}
+
+export const OUTPUT_PATH = resolveOutputPath();
+export function assertSafeOutputPath(): void {
+    if (process.env.GITHUB_ACTIONS === 'true') {
+        resolveOutputPath(process.env.SUMMARY_CARDS_OUTPUT_PATH, process.env.RUNNER_TEMP || tmpdir(), true);
+    }
+}
 const GITHUB_REPOSITORY = process.env.GITHUB_REPOSITORY;
 
 // If neither a branch or tag is available for the event type, the variable will not exist. https://docs.github.com/en/actions/configuring-and-managing-workflows/using-environment-variables

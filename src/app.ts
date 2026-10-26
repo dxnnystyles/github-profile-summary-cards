@@ -12,11 +12,12 @@ import {createOrganizationStatsCard} from './cards/organization-stats-card';
 import {getOwnerType, OwnerType} from './github-api/owner-type';
 import {spawn} from 'child_process';
 import {parseExcludeLanguages} from './utils/translator';
-import {OUTPUT_PATH, generatePreviewMarkdown} from './utils/file-writer';
+import {OUTPUT_PATH, assertSafeOutputPath, generatePreviewMarkdown} from './utils/file-writer';
 import {ThemeMap} from './const/theme';
 import {parseAnimation} from './utils/animation';
 import {CardGenerationOptions} from './utils/card-generation';
 import {normalizeTimeZone} from './utils/time-zone';
+import {rmSync} from 'fs';
 
 const execCmd = (cmd: string, args: string[] = []) =>
     new Promise((resolve, reject) => {
@@ -192,7 +193,8 @@ const action = async () => {
     try {
         // Remove old output
         core.info(`Remove old cards...`);
-        await execCmd('sudo', ['rm', '-rf', OUTPUT_PATH]);
+        assertSafeOutputPath();
+        rmSync(OUTPUT_PATH, {recursive: true, force: true});
 
         let ownerType: OwnerType;
         try {
