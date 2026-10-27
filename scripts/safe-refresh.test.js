@@ -7,19 +7,19 @@ const {promoteCardSet} = require('./promote-card-set');
 const {validateCardSet} = require('./validate-card-set');
 
 const cards = [
-    ['0-profile-details.svg', 700, 'Profile Details'],
-    ['1-repos-per-language.svg', 340, 'Repositories per Language'],
-    ['2-most-commit-language.svg', 340, 'Most Commit Language'],
-    ['3-stats.svg', 340, 'GitHub Stats'],
-    ['4-productive-time.svg', 340, 'Commits by Hour']
+    ['0-profile-details.svg', 700, 380, 'Profile Details'],
+    ['1-repos-per-language.svg', 340, 200, 'Repositories per Language'],
+    ['2-most-commit-language.svg', 340, 200, 'Most Commit Language'],
+    ['3-stats.svg', 340, 200, 'GitHub Stats'],
+    ['4-productive-time.svg', 340, 200, 'Commits by Hour']
 ];
 
 function writeSet(directory, revision) {
     fs.mkdirSync(directory, {recursive: true});
-    for (const [filename, width, title] of cards) {
+    for (const [filename, width, height, title] of cards) {
         const extra =
             filename === '0-profile-details.svg'
-                ? '<text>dxnnystyles · 494 Contributions on GitHub · 5 Public Repos · Joined GitHub · daily chart last year</text>'
+                ? '<text>dxnnystyles · 494 All-time contributions · 5 Public repos · Joined GitHub · monthly totals aggregated from the public daily calendar for the last year</text>'
                 : filename === '1-repos-per-language.svg'
                   ? `<text>Top Languages by Repo ${revision}</text>`
                   : filename === '2-most-commit-language.svg'
@@ -29,7 +29,7 @@ function writeSet(directory, revision) {
                       : `<text>Commits by Hour · America/Los_Angeles · trailing year ${revision}</text>`;
         fs.writeFileSync(
             path.join(directory, filename),
-            `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="200" role="img" aria-labelledby="title desc"><title id="title">${title}</title><desc id="desc">Verified public profile chart.</desc><rect fill="#161b22" stroke="#30363d"/><g>${extra}</g></svg>`
+            `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" role="img" aria-labelledby="title desc"><title id="title">${title}</title><desc id="desc">Verified public profile chart.</desc><rect fill="#161b22" stroke="#30363d"/><g>${extra}${filename === '0-profile-details.svg' ? '<text>25/10</text><text>26/04</text><text>26/10</text>' : ''}</g></svg>`
         );
     }
 }

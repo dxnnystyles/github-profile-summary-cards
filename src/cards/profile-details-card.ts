@@ -59,7 +59,14 @@ const getProfileDetailsSVG = function (
     themeName: string,
     override?: ThemeColorOverride
 ): string {
-    const svgString = createDetailCard(`${title}`, userDetails, contributionsData, resolveTheme(themeName, override));
+    const svgString = createDetailCard(
+        `${title}`,
+        userDetails,
+        contributionsData,
+        resolveTheme(themeName, override),
+        undefined,
+        380
+    );
     return svgString;
 };
 

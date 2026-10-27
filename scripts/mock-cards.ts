@@ -24,9 +24,9 @@ const LANGUAGES = [
     {name: 'Rust', value: 700, color: '#dea584'}
 ];
 
-// Twelve months of contribution counts for the profile-details area chart.
+// Thirteen monthly buckets cover a trailing year whose endpoints cross calendar years.
 // A fixed wave (no randomness) keeps the preview stable across reloads.
-const contributions = Array.from({length: 12}, (_, i) => ({
+const contributions = Array.from({length: 13}, (_, i) => ({
     contributionCount: Math.round(60 + 40 * Math.sin(i / 1.7)),
     date: new Date(2025, i, 15)
 }));
@@ -36,18 +36,17 @@ const contributions = Array.from({length: 12}, (_, i) => ({
 const productiveByHour = Array.from({length: 24}, (_, h) => Math.round(30 * Math.max(0, Math.sin((h - 6) / 3.8)) + 2));
 
 const statsData = [
-    {index: 0, icon: Icon.STAR, name: 'Total Stars:', value: '1.2k'},
-    {index: 1, icon: Icon.COMMIT, name: '2025 Commits:', value: '3.4k'},
-    {index: 2, icon: Icon.PULL_REQUEST, name: 'Total PRs:', value: '287'},
-    {index: 3, icon: Icon.ISSUE, name: 'Total Issues:', value: '143'},
-    {index: 4, icon: Icon.REPOS, name: 'Contributed to:', value: '56'}
+    {index: 0, icon: Icon.STAR, name: 'Total Stars:', value: '12'},
+    {index: 1, icon: Icon.COMMIT, name: 'Total Commits:', value: '34'},
+    {index: 2, icon: Icon.PULL_REQUEST, name: 'Total PRs:', value: '2'},
+    {index: 3, icon: Icon.ISSUE, name: 'Total Issues:', value: '1'},
+    {index: 4, icon: Icon.REPOS, name: 'Contributed to:', value: '5'}
 ];
 
 const profileDetails = [
-    {index: 0, icon: Icon.REPOS, name: 'Public repos', value: '42 Public Repos'},
-    {index: 1, icon: Icon.EMAIL, name: 'Email', value: 'octocat@example.com'},
-    {index: 2, icon: Icon.LOCATION, name: 'Location', value: 'Internet'},
-    {index: 3, icon: Icon.LINK, name: 'Website', value: 'example.com'}
+    {index: 0, icon: Icon.GITHUB, name: 'All-time', value: '494 All-time contributions'},
+    {index: 1, icon: Icon.REPOS, name: 'Public repos', value: '5 Public repos'},
+    {index: 2, icon: Icon.CLOCK, name: 'Joined GitHub', value: 'Joined GitHub 1 year ago'}
 ];
 
 // Render one mock card to an SVG string. Throws on an unknown card name so the
@@ -68,12 +67,14 @@ export function renderMockCard(
                 buildProfileTitle('octocat', 'Mona Lisa', displayName),
                 profileDetails,
                 contributions,
-                theme
+                theme,
+                undefined,
+                380
             );
         case 'repos-per-language':
-            return createDonutChartCard('Repos Per Language', LANGUAGES, theme);
+            return createDonutChartCard('Top Languages by Repo', LANGUAGES, theme);
         case 'most-commit-language':
-            return createDonutChartCard('Most Commit Language', LANGUAGES, theme);
+            return createDonutChartCard('Top Languages by Commit', LANGUAGES, theme);
         case 'stats':
             return createStatsCard('Stats', statsData, theme);
         case 'productive-time':

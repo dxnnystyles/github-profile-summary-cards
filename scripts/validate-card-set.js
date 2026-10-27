@@ -4,7 +4,7 @@ const path = require('node:path');
 const {JSDOM} = require('jsdom');
 
 const CARD_DIMENSIONS = new Map([
-    ['0-profile-details.svg', [700, 200]],
+    ['0-profile-details.svg', [700, 380]],
     ['1-repos-per-language.svg', [340, 200]],
     ['2-most-commit-language.svg', [340, 200]],
     ['3-stats.svg', [340, 200]],
@@ -62,12 +62,21 @@ function validateCardSet(directory) {
             if (CONTACT_FIELDS.test(fullMarkup)) throw new Error('Profile Details contains contact metadata.');
             for (const required of [
                 'dxnnystyles',
-                'Contributions on GitHub',
-                'Public Repos',
+                'All-time',
+                'contributions',
+                'Public repos',
                 'Joined GitHub',
-                'last year'
+                'last year',
+                'monthly totals aggregated'
             ]) {
                 if (!allText.includes(required)) throw new Error(`Profile Details is missing ${required}.`);
+            }
+            const monthTicks = [...svg.querySelectorAll('text')]
+                .map(element => element.textContent.trim())
+                .filter(value => /^\d{2}\/(0[1-9]|1[0-2])$/.test(value));
+            const monthKeys = monthTicks.map(value => Number(value.slice(0, 2)) * 12 + Number(value.slice(3)));
+            if (monthTicks.length !== 3 || new Set(monthTicks).size !== 3 || monthKeys.some((value, index) => index > 0 && value <= monthKeys[index - 1])) {
+                throw new Error(`Profile Details must expose three chronological month ticks; found ${monthTicks.join(', ')}.`);
             }
         }
         for (const required of REQUIRED_TEXT.get(filename) || []) {

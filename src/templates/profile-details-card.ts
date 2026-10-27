@@ -12,29 +12,28 @@ export function createDetailCard(
     }[],
     contributionsData: {contributionCount: number; date: Date}[],
     theme: Theme,
-    chartCaption: string = 'contributions in the last year'
+    chartCaption: string = 'contributions in the last year',
+    cardHeight = 200
 ) {
-    // A wrapped (two-line) title consumes one extra TITLE_LINE_HEIGHT of vertical
-    // space; grow the canvas to match so the details rows, chart and caption don't
-    // get pushed off the bottom of the (otherwise fixed) 200-px card.
+    const mobileReadableLayout = cardHeight === 380;
     const extraTitleLines = Math.max(0, title.split('\n').length - 1);
     const card = new Card(
         title,
         700,
-        200 + extraTitleLines * TITLE_LINE_HEIGHT,
+        cardHeight + extraTitleLines * TITLE_LINE_HEIGHT,
         theme,
         30,
         40,
-        'Public GitHub profile details showing account age, public repository count, and daily contribution activity over the last year.'
+        'Public GitHub profile details showing account age, public repository count, an all-time contribution total, and monthly totals aggregated from the public daily contribution calendar for the trailing year.'
     );
     const svg = card.getSVG();
 
     // draw icon
     const panel = svg.append('g').attr('transform', `translate(30,30)`);
-    const labelHeight = 16;
-    // Each detail row (icon + value) is an animatable item sharing --gpsc-i, so rows
-    // reveal one at a time. The icon's SVG translate lives on an inner group so the
-    // transform-free `.gpsc-item` wrapper can be safely CSS-transformed.
+    const labelHeight = mobileReadableLayout ? 20 : 16;
+    const detailColumns = [0, 215, 430];
+    // Each detail item (icon + value) remains an animatable item. Position the
+    // three approved values on one row above the full-width contribution chart.
     panel
         .selectAll(null)
         .data(userDetails)
@@ -44,8 +43,10 @@ export function createDetailCard(
         .style('--gpsc-i', d => String(d.index))
         .append('g')
         .attr('transform', d => {
-            const y = labelHeight * d.index * 2;
-            return `translate(0,${y})`;
+            if (!mobileReadableLayout) {
+                return `translate(0,${labelHeight * d.index * 2})`;
+            }
+            return `translate(${detailColumns[d.index] ?? 0},0)`;
         })
         .attr('width', labelHeight)
         .attr('height', labelHeight)
@@ -58,43 +59,57 @@ export function createDetailCard(
         .data(userDetails)
         .enter()
         .append('text')
-        .text(d => {
-            return d.value;
-        })
-        .attr('x', labelHeight * 1.5)
-        .attr('y', d => labelHeight * d.index * 2 + labelHeight)
+        .text(d => (mobileReadableLayout ? profileDetailValue(d.index, d.value) : d.value))
+        .attr('x', d => (mobileReadableLayout ? detailColumns[d.index] ?? 0 : 0) + labelHeight * 1.5)
+        .attr('y', d => (mobileReadableLayout ? labelHeight : labelHeight * d.index * 2 + labelHeight))
         .attr('class', 'gpsc-item')
         .style('--gpsc-i', d => String(d.index))
         .style('fill', theme.text)
-        .style('font-size', `${labelHeight}px`);
+        // The SVG is authored at 700px and GitHub scales it to a 366px column
+        // on narrow screens. Use near-2x type here so the displayed values stay
+        // comparable to ordinary 13-14px text after that scaling.
+        .style('font-size', `${mobileReadableLayout ? 28 : labelHeight}px`)
+        .style('font-weight', mobileReadableLayout ? 'bold' : 'normal');
 
-    // process chart data
-    const lineChartData: {contributionCount: number; date: Date}[] = [];
-    const formatter = d3.timeFormat('%Y-%m');
-    for (const data of contributionsData) {
-        const formatDate = formatter(data.date);
-        // Fix: Append day to ensure valid ISO 8601 date (YYYY-MM-DD) for reliable parsing
-        data.date = new Date(`${formatDate}-01`);
-        const lastIndex = lineChartData.length - 1;
-        if (lineChartData.length == 0 || lineChartData[lastIndex].date.getTime() !== data.date.getTime()) {
-            lineChartData.push({
-                contributionCount: data.contributionCount,
-                date: data.date
-            }); // use new object
-        } else {
-            lineChartData[lastIndex].contributionCount += data.contributionCount;
-        }
+    if (mobileReadableLayout) {
+        const labelLines = (index: number): string[] => {
+            if (index === 0) return ['All-time', 'contributions'];
+            if (index === 1) return ['Public repos'];
+            if (index === 2) return ['Joined GitHub'];
+            return [];
+        };
+        const labels = panel
+            .selectAll(null)
+            .data(userDetails)
+            .enter()
+            .append('g')
+            .attr('class', 'gpsc-item')
+            .style('--gpsc-i', d => String(d.index));
+        labels.each((d, index, nodes) => {
+            d3.select(nodes[index])
+                .selectAll(null)
+                .data(labelLines(d.index))
+                .enter()
+                .append('text')
+                .text(line => line)
+                .attr('x', detailColumns[d.index] ?? 0)
+                .attr('y', (_, lineIndex) => 50 + lineIndex * 16)
+                .style('fill', theme.text)
+                .style('font-size', '24px');
+        });
     }
 
+    const lineChartData = aggregateContributionsByUtcMonth(contributionsData);
+
     // prepare chart data
-    const chartRightMargin = 30;
-    const chartWidth = card.width - 2 * card.xPadding - chartRightMargin - 230;
-    // Keep the chart the same physical size regardless of a wrapped title: the extra
-    // canvas height is padding that pushes the chart down, not room for it to grow
-    // into (otherwise the taller chart's x-axis overruns the caption below it).
-    const extraTitleHeight = extraTitleLines * TITLE_LINE_HEIGHT;
-    const chartHeight = card.height - extraTitleHeight - 2 * card.yPadding - 10;
-    const x = d3.scaleTime().range([0, chartWidth]);
+    const chartRightMargin = 32;
+    const chartWidth = mobileReadableLayout
+        ? card.width - 2 * card.xPadding - chartRightMargin
+        : card.width - 2 * card.xPadding - chartRightMargin - 230;
+    const chartHeight = mobileReadableLayout
+        ? 150
+        : card.height - extraTitleLines * TITLE_LINE_HEIGHT - 2 * card.yPadding - 10;
+    const x = d3.scaleUtc().range([0, chartWidth]);
 
     x.domain(
         <[Date, Date]>d3.extent(lineChartData, function (d) {
@@ -128,7 +143,12 @@ export function createDetailCard(
     const chartPanel = svg
         .append('g')
         .attr('color', theme.chart)
-        .attr('transform', `translate(${card.width - chartWidth - card.xPadding + 5},10)`);
+        .attr(
+            'transform',
+            mobileReadableLayout
+                ? `translate(${card.xPadding},145)`
+                : `translate(${card.width - chartWidth - card.xPadding + 5},10)`
+        );
 
     // Inert reveal clip: a full-size rect clipping the area chart. By default it
     // covers the whole plotting region (no visual change); a "reveal"/"sequence"
@@ -164,7 +184,7 @@ export function createDetailCard(
         .style('--gpsc-i', String(userDetails.length))
         .append('path')
         .data([lineChartData])
-        .attr('transform', `translate(${-chartRightMargin},0)`)
+        .attr('transform', mobileReadableLayout ? 'translate(0,0)' : `translate(${-chartRightMargin},0)`)
         .attr('stroke', theme.chart)
         .attr('fill', theme.chart)
         .attr('opacity', 1)
@@ -173,29 +193,48 @@ export function createDetailCard(
     // Add the X Axis
     const xAxis = d3
         .axisBottom<Date>(x)
-        .tickFormat(d3.timeFormat('%y/%m'))
+        .tickPadding(mobileReadableLayout ? 10 : 3)
+        .tickFormat(d3.utcFormat('%y/%m'))
         .tickValues(
             lineChartData
-                .filter((_, i) => i % 4 === 0)
+                .filter((_, i) => i % (mobileReadableLayout ? 6 : 4) === 0)
                 .map(d => {
                     return d.date;
                 })
         );
 
-    chartPanel
+    const xAxisGroup = chartPanel
         .append('g')
         .attr('color', theme.text)
-        .attr('transform', `translate(${-chartRightMargin},${chartHeight})`)
+        .attr(
+            'transform',
+            mobileReadableLayout ? `translate(0,${chartHeight})` : `translate(${-chartRightMargin},${chartHeight})`
+        )
         .call(xAxis)
-        .attr('font-size', '12px');
+        .attr('font-size', mobileReadableLayout ? '28px' : '12px');
+    if (mobileReadableLayout) {
+        xAxisGroup
+            .selectAll<SVGTextElement, Date>('.tick text')
+            .filter((_, index) => index === 0)
+            .attr('text-anchor', 'start')
+            .attr('dx', '6px');
+        xAxisGroup
+            .selectAll<SVGTextElement, Date>('.tick text')
+            .filter((_, index, nodes) => nodes.length > 1 && index === nodes.length - 1)
+            .attr('text-anchor', 'end')
+            .attr('dx', '-6px');
+    }
 
     // Add the Y Axis
     chartPanel
         .append('g')
         .attr('color', theme.text)
-        .attr('transform', `translate(${chartWidth - chartRightMargin},0)`)
+        .attr(
+            'transform',
+            mobileReadableLayout ? `translate(${chartWidth},0)` : `translate(${chartWidth - chartRightMargin},0)`
+        )
         .call(d3.axisRight(y).ticks(5))
-        .attr('font-size', '12px');
+        .attr('font-size', mobileReadableLayout ? '28px' : '12px');
 
     // Caption goes above the chart for short titles, below the chart for tall/long titles
     // (multi-line titles push the chart down and the caption would otherwise overlap them).
@@ -204,10 +243,34 @@ export function createDetailCard(
         .append('g')
         .append('text')
         .text(chartCaption)
-        .attr('y', titleIsTall ? 140 : -15)
-        .attr('x', 230)
+        .attr('y', mobileReadableLayout ? -12 : titleIsTall ? 140 : -15)
+        .attr('x', mobileReadableLayout ? chartWidth / 2 : 230)
+        .attr('text-anchor', mobileReadableLayout ? 'middle' : 'start')
         .style('fill', theme.text)
-        .style('font-size', `10px`);
+        .style('font-size', mobileReadableLayout ? '24px' : '10px');
 
     return card.toString();
+}
+
+function profileDetailValue(index: number, value: string): string {
+    if (index === 0) return value.replace(/ Contributions on GitHub$/, '');
+    if (index === 1) return value.replace(/ Public Repos$/, '');
+    if (index === 2) return value.replace(/^Joined GitHub /, '');
+    return value;
+}
+
+export function aggregateContributionsByUtcMonth(
+    contributionsData: {contributionCount: number; date: Date}[]
+): {contributionCount: number; date: Date}[] {
+    const lineChartData: {contributionCount: number; date: Date}[] = [];
+    for (const data of contributionsData) {
+        const monthDate = new Date(Date.UTC(data.date.getUTCFullYear(), data.date.getUTCMonth(), 1));
+        const lastIndex = lineChartData.length - 1;
+        if (lineChartData.length === 0 || lineChartData[lastIndex].date.getTime() !== monthDate.getTime()) {
+            lineChartData.push({contributionCount: data.contributionCount, date: monthDate});
+        } else {
+            lineChartData[lastIndex].contributionCount += data.contributionCount;
+        }
+    }
+    return lineChartData;
 }
