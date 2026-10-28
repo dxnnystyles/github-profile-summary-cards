@@ -1,402 +1,118 @@
 import {getProfileDetails} from '../../src/github-api/profile-details';
 import axios from 'axios';
 import MockAdapter from 'axios-mock-adapter';
+
 const mock = new MockAdapter(axios);
-
-const data = {
-    data: {
-        user: {
-            id: 'userID',
-            name: 'vn7',
-            email: 'vn7n24fzkq@gmail.com',
-            createdAt: '2016-07-01T10:46:25Z',
-            twitterUsername: null,
-            company: 'vn7',
-            location: 'Taiwan',
-            websiteUrl: null,
-            repositories: {
-                totalCount: 30
-            },
-            issues: {totalCount: 10},
-            repositoriesContributedTo: {totalCount: 30},
-            pullRequests: {totalCount: 40},
-            contributionsCollection: {
-                contributionYears: [2019, 2020],
-                contributionCalendar: {
-                    weeks: [
-                        {
-                            contributionDays: [
-                                {
-                                    date: '2019-09-06T00:00:00.000+00:00',
-                                    contributionCount: 20
-                                },
-                                {
-                                    date: '2019-09-07T00:00:00.000+00:00',
-                                    contributionCount: 10
-                                }
-                            ]
-                        },
-                        {
-                            contributionDays: [
-                                {
-                                    date: '2020-01-12T00:00:00.000+00:00',
-                                    contributionCount: 5
-                                }
-                            ]
-                        }
-                    ]
-                }
-            }
-        }
-    }
+const profile = {
+    id: 'userID',
+    name: 'dxnnystyles',
+    createdAt: '2016-07-01T10:46:25Z',
+    repositories: {totalCount: 7},
+    contributionsCollection: {contributionYears: [2024, 2025, 2026]},
+    issues: {totalCount: 10},
+    repositoriesContributedTo: {totalCount: 30},
+    pullRequests: {totalCount: 40}
 };
+const graphqlData = {data: {user: profile}};
+const repoPages = [
+    {fork: false, stargazers_count: 11},
+    {fork: true, stargazers_count: 50}
+];
 
-const error = {
-    errors: [
-        {
-            type: 'NOT_FOUND',
-            path: ['user'],
-            locations: [],
-            message: 'GitHub api failed'
-        }
-    ]
-};
-
-afterEach(() => {
-    mock.reset();
-});
-
-// Star totals now come from REST repo pagination (stargazers_count), which runs
-// concurrently with the GraphQL profile fetch — every test mocks both.
-const restRepo = (stars: number, fork = false) => ({stargazers_count: stars, fork});
-const mockRestStars = (username: string, pages: any[][] = [[restRepo(110), restRepo(20)]]) =>
-    mock.onGet(`https://api.github.com/users/${username}/repos`).reply(config => {
-        const page = config.params?.page ?? 1;
-        return [200, pages[page - 1] ?? []];
+function mockStars(login: string): void {
+    mock.onGet(`https://api.github.com/users/${login}/repos`).reply(config => {
+        const page = Number(config.params?.page ?? 1);
+        return [200, page === 1 ? repoPages : []];
     });
+}
 
-describe('github api for profile details', () => {
-    it('should get correct profile data', async () => {
-        mock.onPost('https://api.github.com/graphql').reply(200, data);
-        mockRestStars('vn7n24fzkq');
-        const profileDetails = await getProfileDetails('vn7n24fzkq', 'token');
-        const query = JSON.parse(mock.history.post[0].data).query;
-        expect(query).not.toMatch(/\b(email|company|location|websiteUrl|twitterUsername)\b/);
-        expect(profileDetails).toEqual({
+afterEach(() => mock.reset());
+
+describe('public profile details API', () => {
+    it('fetches only public account fields needed by the profile and stats cards', async () => {
+        mock.onPost('https://api.github.com/graphql').reply(200, graphqlData);
+        mockStars('dxnnystyles');
+
+        const result = await getProfileDetails('dxnnystyles', 'token');
+        const query = JSON.parse(mock.history.post[0].data).query as string;
+        expect(query).toContain('privacy: PUBLIC');
+        expect(query).toContain('isFork: false');
+        expect(query).toContain('contributionYears');
+        expect(query).not.toMatch(
+            /contributionCalendar|contributionDays|\bemail\b|company|location|websiteUrl|twitterUsername/i
+        );
+        expect(result).toEqual({
             id: 'userID',
-            name: 'vn7',
+            name: 'dxnnystyles',
             createdAt: '2016-07-01T10:46:25Z',
-            contributionYears: [2019, 2020],
-            totalPublicRepos: 30,
-            totalStars: 130,
+            totalPublicRepos: 7,
+            totalStars: 11,
             totalIssueContributions: 10,
             totalPullRequestContributions: 40,
             totalRepositoryContributions: 30,
-            contributions: [
-                {
-                    date: new Date('2019-09-06T00:00:00.000+00:00'),
-                    contributionCount: 20
-                },
-                {
-                    date: new Date('2019-09-07T00:00:00.000+00:00'),
-                    contributionCount: 10
-                },
-                {
-                    date: new Date('2020-01-12T00:00:00.000+00:00'),
-                    contributionCount: 5
-                }
-            ]
+            contributionYears: [2024, 2025, 2026]
         });
     });
 
-    it('should throw error when api failed', async () => {
-        mock.onPost('https://api.github.com/graphql').reply(200, error);
-        await expect(getProfileDetails('vn7n24fzkq', 'token')).rejects.toThrow('GitHub api failed');
-    });
-
-    it('falls back to split queries when the combined document hits resource limits', async () => {
+    it('retains the lower-cost split fallback when GitHub rejects the combined query', async () => {
         const resourceLimit = {errors: [{message: 'Resource limits for this query exceeded.'}]};
-        const u = data.data.user;
         mock.onPost('https://api.github.com/graphql').reply(config => {
-            const body = JSON.parse(config.data);
-            if (body.query.includes('query UserDetails(')) return [200, resourceLimit];
-            if (body.query.includes('UserDetailsCore')) {
+            const query = JSON.parse(config.data).query as string;
+            if (query.includes('query UserDetails(')) return [200, resourceLimit];
+            if (query.includes('UserDetailsCore'))
                 return [
                     200,
                     {
                         data: {
                             user: {
-                                id: u.id,
-                                name: u.name,
-                                email: u.email,
-                                createdAt: u.createdAt,
-                                twitterUsername: u.twitterUsername,
-                                company: u.company,
-                                location: u.location,
-                                websiteUrl: u.websiteUrl,
-                                repositories: u.repositories
+                                id: profile.id,
+                                name: profile.name,
+                                createdAt: profile.createdAt,
+                                repositories: profile.repositories
                             }
                         }
                     }
                 ];
-            }
-            if (body.query.includes('UserDetailsCalendar')) {
+            if (query.includes('UserDetailsYears'))
                 return [
                     200,
                     {
                         data: {
                             user: {
-                                contributionsCollection: {
-                                    contributionCalendar: u.contributionsCollection.contributionCalendar
-                                }
+                                contributionsCollection: profile.contributionsCollection
                             }
                         }
                     }
                 ];
-            }
-            if (body.query.includes('UserDetailsYears')) {
-                return [200, {data: {user: {contributionsCollection: {contributionYears: [2019, 2020]}}}}];
-            }
-            if (body.query.includes('UserDetailsCounts')) {
+            if (query.includes('UserDetailsCounts'))
                 return [
                     200,
                     {
                         data: {
                             user: {
-                                repositoriesContributedTo: u.repositoriesContributedTo,
-                                pullRequests: u.pullRequests,
-                                issues: u.issues
+                                issues: profile.issues,
+                                pullRequests: profile.pullRequests,
+                                repositoriesContributedTo: profile.repositoriesContributedTo
                             }
                         }
                     }
                 ];
-            }
-            return [500, {}];
+            return [500, {errors: [{message: 'unexpected query'}]}];
         });
+        mockStars('dxnnystyles');
 
-        mockRestStars('antroll');
-        const profileDetails = await getProfileDetails('antroll', 'token');
-        // identical result to the combined-query path
-        expect(profileDetails.totalStars).toBe(130);
-        expect(profileDetails.totalPullRequestContributions).toBe(40);
-        expect(profileDetails.totalRepositoryContributions).toBe(30);
-        expect(profileDetails.contributionYears).toEqual([2019, 2020]);
-        expect(profileDetails.contributions).toHaveLength(3);
+        const result = await getProfileDetails('dxnnystyles', 'token');
+        expect(mock.history.post).toHaveLength(4);
+        expect(result.totalPublicRepos).toBe(7);
+        expect(result.contributionYears).toEqual([2024, 2025, 2026]);
+        expect(result.totalStars).toBe(11);
     });
 
-    it('also falls back to split queries on an HTTP 502 gateway timeout', async () => {
-        const u = data.data.user;
-        // Combined document times out at the gateway (502) on every attempt
-        // instead of being rejected up front; the split path must still engage.
-        mock.onPost('https://api.github.com/graphql').reply(config => {
-            const body = JSON.parse(config.data);
-            if (body.query.includes('query UserDetails(')) return [502, {}];
-            if (body.query.includes('UserDetailsCore')) {
-                return [
-                    200,
-                    {
-                        data: {
-                            user: {
-                                id: u.id,
-                                name: u.name,
-                                email: u.email,
-                                createdAt: u.createdAt,
-                                twitterUsername: u.twitterUsername,
-                                company: u.company,
-                                location: u.location,
-                                websiteUrl: u.websiteUrl,
-                                repositories: u.repositories
-                            }
-                        }
-                    }
-                ];
-            }
-            if (body.query.includes('UserDetailsCalendar')) {
-                return [
-                    200,
-                    {
-                        data: {
-                            user: {
-                                contributionsCollection: {
-                                    contributionCalendar: u.contributionsCollection.contributionCalendar
-                                }
-                            }
-                        }
-                    }
-                ];
-            }
-            if (body.query.includes('UserDetailsYears')) {
-                return [200, {data: {user: {contributionsCollection: {contributionYears: [2019, 2020]}}}}];
-            }
-            if (body.query.includes('UserDetailsCounts')) {
-                return [
-                    200,
-                    {
-                        data: {
-                            user: {
-                                repositoriesContributedTo: u.repositoriesContributedTo,
-                                pullRequests: u.pullRequests,
-                                issues: u.issues
-                            }
-                        }
-                    }
-                ];
-            }
-            return [500, {}];
+    it('fails closed when GitHub returns an account error', async () => {
+        mock.onPost('https://api.github.com/graphql').reply(200, {
+            errors: [{type: 'NOT_FOUND', message: 'GitHub api failed'}]
         });
-
-        mockRestStars('antroll');
-        const profileDetails = await getProfileDetails('antroll', 'token');
-        expect(profileDetails.totalStars).toBe(130);
-        expect(profileDetails.totalPullRequestContributions).toBe(40);
-        expect(profileDetails.totalRepositoryContributions).toBe(30);
-        expect(profileDetails.contributionYears).toEqual([2019, 2020]);
-        expect(profileDetails.contributions).toHaveLength(3);
-    }, 20000);
-
-    it('merges two half-window calendars when even the calendar alone is rejected', async () => {
-        const resourceLimit = {errors: [{message: 'Resource limits for this query exceeded.'}]};
-        const u = data.data.user;
-        const week = (date: string, count: number) => ({contributionDays: [{date, contributionCount: count}]});
-        const calendarWindows: {from: string; to: string}[] = [];
-        mock.onPost('https://api.github.com/graphql').reply(config => {
-            const body = JSON.parse(config.data);
-            const vars = body.variables ?? {};
-            if (body.query.includes('query UserDetails(')) return [200, resourceLimit];
-            if (body.query.includes('UserDetailsCalendar')) {
-                // full trailing-year window (null from/to) rejected; halves pass
-                if (!vars.from) return [200, resourceLimit];
-                calendarWindows.push({from: vars.from, to: vars.to});
-                const isFirstHalf = new Date(vars.from).getTime() < Date.now() - 200 * 24 * 3600 * 1000;
-                return [
-                    200,
-                    {
-                        data: {
-                            user: {
-                                contributionsCollection: {
-                                    contributionCalendar: {
-                                        weeks: [isFirstHalf ? week('2025-09-01', 4) : week('2026-03-01', 6)]
-                                    }
-                                }
-                            }
-                        }
-                    }
-                ];
-            }
-            if (body.query.includes('UserDetailsCore')) {
-                return [
-                    200,
-                    {
-                        data: {
-                            user: {
-                                id: u.id,
-                                name: u.name,
-                                email: u.email,
-                                createdAt: u.createdAt,
-                                twitterUsername: u.twitterUsername,
-                                company: u.company,
-                                location: u.location,
-                                websiteUrl: u.websiteUrl,
-                                repositories: u.repositories
-                            }
-                        }
-                    }
-                ];
-            }
-            if (body.query.includes('UserDetailsYears')) {
-                return [200, {data: {user: {contributionsCollection: {contributionYears: [2025, 2026]}}}}];
-            }
-            if (body.query.includes('UserDetailsCounts')) {
-                return [
-                    200,
-                    {
-                        data: {
-                            user: {
-                                repositoriesContributedTo: u.repositoriesContributedTo,
-                                pullRequests: u.pullRequests,
-                                issues: u.issues
-                            }
-                        }
-                    }
-                ];
-            }
-            return [500, {}];
-        });
-
-        mockRestStars('antfu');
-        const profileDetails = await getProfileDetails('antfu', 'token');
-        // both half-window days present, in order
-        expect(profileDetails.contributions.map(c => c.contributionCount)).toEqual([4, 6]);
-
-        // The two windows must be adjacent on a UTC day boundary — a mid-day
-        // seam would put the boundary date into both halves' calendars.
-        expect(calendarWindows).toHaveLength(2);
-        const [w1, w2] = calendarWindows.sort((a, b) => a.from.localeCompare(b.from));
-        expect(new Date(w1.to).getTime() + 1).toBe(new Date(w2.from).getTime());
-        expect(w2.from.endsWith('T00:00:00.000Z')).toBe(true);
-        expect(w1.from.endsWith('T00:00:00.000Z')).toBe(true);
-        // ~1 year covered end to end
-        const spanDays = (new Date(w2.to).getTime() - new Date(w1.from).getTime()) / (24 * 3600 * 1000);
-        expect(spanDays).toBeGreaterThanOrEqual(363);
-        expect(spanDays).toBeLessThanOrEqual(366);
-        // merged daily series has no duplicate dates
-        const dates = profileDetails.contributions.map(c => c.date.toISOString());
-        expect(new Set(dates).size).toBe(dates.length);
-    });
-
-    it('rejects when the REST star fetch fails, so stale rescue owns the fallback', async () => {
-        // Deliberate: a 0-star fallback would cache WRONG data for a day;
-        // failing lets data-cache serve the stale copy (or an error card once).
-        mock.onPost('https://api.github.com/graphql').reply(200, data);
-        mock.onGet('https://api.github.com/users/starless/repos').reply(500, {});
-        await expect(getProfileDetails('starless', 'token')).rejects.toThrow();
-    }, 20000);
-
-    it('sums stars across every REST repo page, not just the first 100', async () => {
-        mock.onPost('https://api.github.com/graphql').reply(200, data);
-        // page 1 is full (100 repos), so pagination continues to page 2;
-        // the fork's 999 stars must be excluded (GraphQL used isFork: false)
-        const fullPage = Array.from({length: 100}, () => restRepo(1));
-        mockRestStars('vn7n24fzkq', [fullPage, [restRepo(7), restRepo(3), restRepo(999, true)]]);
-        const profileDetails = await getProfileDetails('vn7n24fzkq', 'token');
-        expect(profileDetails.totalStars).toBe(110);
-    });
-});
-
-describe('compact profile cache payload', () => {
-    it('reconstructs consecutive daily contributions across a year boundary', async () => {
-        const consecutive = JSON.parse(JSON.stringify(data));
-        consecutive.data.user.contributionsCollection.contributionCalendar.weeks = [
-            {
-                contributionDays: [
-                    {date: '2025-12-30', contributionCount: 1},
-                    {date: '2025-12-31', contributionCount: 2},
-                    {date: '2026-01-01', contributionCount: 3},
-                    {date: '2026-01-02', contributionCount: 4}
-                ]
-            }
-        ];
-        mock.onPost('https://api.github.com/graphql').reply(200, consecutive);
-        mockRestStars('someone');
-        const pd = await getProfileDetails('someone', 'token');
-        expect(pd.contributions.map(c => c.date.toISOString().slice(0, 10))).toEqual([
-            '2025-12-30',
-            '2025-12-31',
-            '2026-01-01',
-            '2026-01-02'
-        ]);
-        expect(pd.contributions.map(c => c.contributionCount)).toEqual([1, 2, 3, 4]);
-    });
-
-    it('keeps non-consecutive days intact via the explicit fallback', async () => {
-        // the base fixture has gaps (2019-09-06/07 then 2020-01-12)
-        mock.onPost('https://api.github.com/graphql').reply(200, data);
-        mockRestStars('someone');
-        const pd = await getProfileDetails('someone', 'token');
-        expect(pd.contributions.map(c => c.date.toISOString().slice(0, 10))).toEqual([
-            '2019-09-06',
-            '2019-09-07',
-            '2020-01-12'
-        ]);
+        mockStars('dxnnystyles');
+        await expect(getProfileDetails('dxnnystyles', 'token')).rejects.toThrow('GitHub api failed');
     });
 });

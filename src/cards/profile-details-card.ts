@@ -1,43 +1,37 @@
 import {ThemeMap, ThemeColorOverride, resolveTheme} from '../const/theme';
-import {Icon} from '../const/icon';
 import {abbreviateNumber} from 'js-abbreviation-number';
-import {getProfileDetails, ProfileDetails, ProfileContribution} from '../github-api/profile-details';
+import {getProfileDetails, ProfileDetails} from '../github-api/profile-details';
 import {getContributionTotals} from '../utils/contribution-history';
-import {createDetailCard} from '../templates/profile-details-card';
+import {Card} from '../templates/card';
 import {CardGenerationOptions, writeThemedCards} from '../utils/card-generation';
 import {buildProfileTitle} from '../utils/profile-title';
 
+const CARD_WIDTH = 700;
+const CARD_HEIGHT = 200;
+
 /**
- * Creates a Profile Details Card SVG.
- *
- * @param {string} username - The GitHub username.
- * @param {string} token - The GitHub API token.
- * @param {CardGenerationOptions} [options] - Optional theme/animation/displayName controls.
- * @return {Promise<void>}
+ * Creates a compact Profile Details card with public account totals only.
+ * @param {string} username GitHub login used to request public profile data.
+ * @param {string} token GitHub API token supplied by the caller.
+ * @param {CardGenerationOptions} options Card generation and output options.
  */
 export const createProfileDetailsCard = async function (
     username: string,
     token: string,
     options: CardGenerationOptions = {}
 ) {
-    const profileDetailsData = await getProfileDetailsData(username, token);
-    const title = buildProfileTitle(username, profileDetailsData[0].name, options.displayName);
-    // use 0- prefix for sort in preview
-    writeThemedCards(
-        '0-profile-details',
-        themeName => getProfileDetailsSVG(title, profileDetailsData[0].contributions, profileDetailsData[1], themeName),
-        options
-    );
+    const data = await getProfileDetailsData(username, token);
+    const title = buildProfileTitle(username, null, options.displayName);
+    writeThemedCards('0-profile-details', themeName => renderProfileDetailsSVG(title, data, themeName), options);
 };
+
 /**
- * Generates the SVG for the Profile Details Card.
- *
- * @param {string} username - The GitHub username.
- * @param {string} themeName - The card theme.
- * @param {string} token - The GitHub API token.
- * @param {ThemeColorOverride} [override] - Optional per-request color overrides.
- * @param {string} [displayName] - Optional override for the displayed name/title.
- * @return {Promise<string>} The SVG string.
+ * Generates one theme variant for the compact Profile Details card.
+ * @param {string} username GitHub login used to request public profile data.
+ * @param {string} themeName Name of the configured card theme.
+ * @param {string} token GitHub API token supplied by the caller.
+ * @param {ThemeColorOverride} [override] Optional theme color overrides.
+ * @param {string} [displayName] Optional visible display name.
  */
 export const getProfileDetailsSVGWithThemeName = async function (
     username: string,
@@ -47,76 +41,81 @@ export const getProfileDetailsSVGWithThemeName = async function (
     displayName?: string
 ): Promise<string> {
     if (!ThemeMap.has(themeName)) throw new Error('Theme does not exist');
-    const profileDetailsData = await getProfileDetailsData(username, token);
-    const title = buildProfileTitle(username, profileDetailsData[0].name, displayName);
-    return getProfileDetailsSVG(title, profileDetailsData[0].contributions, profileDetailsData[1], themeName, override);
+    const data = await getProfileDetailsData(username, token);
+    const title = buildProfileTitle(username, null, displayName);
+    return renderProfileDetailsSVG(title, data, themeName, override);
 };
 
-const getProfileDetailsSVG = function (
+export interface ProfileDetailsCardData {
+    profile: ProfileDetails;
+    allTimeContributions: number;
+    accountAge: string;
+}
+
+export const renderProfileDetailsSVG = (
     title: string,
-    contributionsData: ProfileContribution[],
-    userDetails: {index: number; icon: string; name: string; value: string}[],
+    data: ProfileDetailsCardData,
     themeName: string,
     override?: ThemeColorOverride
-): string {
-    const svgString = createDetailCard(
-        `${title}`,
-        userDetails,
-        contributionsData,
-        resolveTheme(themeName, override),
-        undefined,
-        380
+): string => {
+    const theme = resolveTheme(themeName, override);
+    const card = new Card(
+        title,
+        CARD_WIDTH,
+        CARD_HEIGHT,
+        theme,
+        30,
+        35,
+        `Public GitHub profile details for ${title}: all-time contributions, original public repositories (forks excluded), and account age. Contact fields and the contribution chart are omitted.`
     );
-    return svgString;
-};
-
-const getProfileDateJoined = function (profileDetails: ProfileDetails): string {
-    const s = (unit: number) => {
-        return unit === 1 ? '' : 's';
-    };
-
-    const now = Date.now();
-    const created = new Date(profileDetails.createdAt);
-    const diff = new Date(now - created.getTime());
-    const years = diff.getUTCFullYear() - new Date(0).getUTCFullYear();
-    const months = diff.getUTCMonth() - new Date(0).getUTCMonth();
-    const days = diff.getUTCDate() - new Date(0).getUTCDate();
-    return years
-        ? `${years} year${s(years)} ago`
-        : months
-          ? `${months} month${s(months)} ago`
-          : `${days} day${s(days)} ago`;
-};
-
-const getProfileDetailsData = async function (
-    username: string,
-    token: string
-): Promise<[ProfileDetails, {index: number; icon: string; name: string; value: string}[]]> {
-    const profileDetails = await getProfileDetails(username, token);
-    // Full history everywhere — per-year results are cached (past years are
-    // immutable), so the web service can afford the same semantics as the Action.
-    const {totalContributions} = await getContributionTotals(username, profileDetails.contributionYears, token);
-
-    const userDetails: {index: number; icon: string; name: string; value: string}[] = [
-        {
-            index: 0,
-            icon: Icon.GITHUB,
-            name: 'Contributions',
-            value: `${abbreviateNumber(totalContributions, 2)} Contributions on GitHub`
-        },
-        {
-            index: 1,
-            icon: Icon.REPOS,
-            name: 'Public Repos',
-            value: `${abbreviateNumber(profileDetails.totalPublicRepos, 2)} Public Repos`
-        },
-        {
-            index: 2,
-            icon: Icon.CLOCK,
-            name: 'JoinedAt',
-            value: `Joined GitHub ${getProfileDateJoined(profileDetails)}`
-        }
+    const root = card.getSVG();
+    const columns = [
+        {x: 125, label: ['All-time', 'contributions'], value: abbreviateNumber(data.allTimeContributions, 2)},
+        {x: 350, label: ['Public repos', '(non-fork)'], value: abbreviateNumber(data.profile.totalPublicRepos, 2)},
+        {x: 575, label: ['GitHub account age'], value: data.accountAge}
     ];
 
-    return [profileDetails, userDetails];
+    columns.forEach(column => {
+        const label = root
+            .append('text')
+            .attr('x', column.x)
+            .attr('text-anchor', 'middle')
+            .attr('fill', theme.text)
+            .attr('font-size', '24px')
+            .attr('font-weight', '500');
+        column.label.forEach((line, index) => {
+            const baseline = column.label.length === 1 ? 57 : 43 + index * 22;
+            label.append('tspan').attr('x', column.x).attr('y', baseline).text(line);
+        });
+        root.append('text')
+            .attr('x', column.x)
+            .attr('y', 115)
+            .attr('text-anchor', 'middle')
+            .attr('fill', theme.title)
+            .attr('font-size', '38px')
+            .attr('font-weight', '650')
+            .text(column.value);
+    });
+
+    return card.toString();
+};
+
+const getProfileDateJoined = (profile: ProfileDetails): string => {
+    const created = new Date(profile.createdAt);
+    const now = new Date();
+    let months = (now.getUTCFullYear() - created.getUTCFullYear()) * 12 + now.getUTCMonth() - created.getUTCMonth();
+    if (now.getUTCDate() < created.getUTCDate()) months -= 1;
+    months = Math.max(0, months);
+    const years = Math.floor(months / 12);
+    return years ? `${years} yr${years === 1 ? '' : 's'}` : `${months} mo`;
+};
+
+const getProfileDetailsData = async (username: string, token: string): Promise<ProfileDetailsCardData> => {
+    const profile = await getProfileDetails(username, token);
+    const {totalContributions} = await getContributionTotals(username, profile.contributionYears, token);
+    return {
+        profile,
+        allTimeContributions: totalContributions,
+        accountAge: getProfileDateJoined(profile)
+    };
 };

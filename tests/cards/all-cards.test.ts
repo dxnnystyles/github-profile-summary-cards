@@ -16,8 +16,6 @@ import {getContributionByYear} from '../../src/github-api/contributions-by-year'
 import {getOrganizationDetails} from '../../src/github-api/organization-details';
 import {getOrganizationRepoLanguages} from '../../src/github-api/organization-repos-per-language';
 import {getOrganizationCommitLanguage} from '../../src/github-api/organization-commits-per-language';
-import {aggregateContributionsByUtcMonth, createDetailCard} from '../../src/templates/profile-details-card';
-import {Theme} from '../../src/const/theme';
 
 // Mock all dependencies
 jest.mock('../../src/utils/file-writer');
@@ -95,43 +93,6 @@ describe('Cards Generation (Integration)', () => {
         });
     });
 
-    it('keeps daily contribution input unchanged while building monthly chart values', () => {
-        const contributions = [
-            {date: new Date('2025-10-01T00:00:00Z'), contributionCount: 2},
-            {date: new Date('2025-10-31T23:59:00Z'), contributionCount: 3},
-            {date: new Date('2025-11-01T00:00:00Z'), contributionCount: 4},
-            {date: new Date('2026-01-01T00:00:00Z'), contributionCount: 5}
-        ];
-        const originalDates = contributions.map(day => day.date.toISOString());
-        const monthly = aggregateContributionsByUtcMonth(contributions);
-        expect(monthly.map(month => [month.date.toISOString(), month.contributionCount])).toEqual([
-            ['2025-10-01T00:00:00.000Z', 5],
-            ['2025-11-01T00:00:00.000Z', 4],
-            ['2026-01-01T00:00:00.000Z', 5]
-        ]);
-        expect(monthly.reduce((sum, month) => sum + month.contributionCount, 0)).toBe(14);
-        const svg = createDetailCard(
-            'dxnnystyles',
-            [
-                {index: 0, icon: '', name: 'Contributions', value: '494 Contributions on GitHub'},
-                {index: 1, icon: '', name: 'Public Repos', value: '5 Public Repos'},
-                {index: 2, icon: '', name: 'JoinedAt', value: 'Joined GitHub 1 year ago'}
-            ],
-            contributions,
-            new Theme('#d97757', '#c9d1d9', '#161b22', '#30363d', 1, '#8b949e', '#3fb950'),
-            undefined,
-            380
-        );
-
-        expect(contributions.map(day => day.date.toISOString())).toEqual(originalDates);
-        expect(contributions.map(day => day.contributionCount)).toEqual([2, 3, 4, 5]);
-        expect(svg).toContain('monthly totals aggregated');
-        expect(svg).toContain('All-time');
-        expect(svg).toContain('height="150"');
-        expect(svg).toContain('text-anchor="start" dx="6px"');
-        expect(svg).toContain('25/10');
-    });
-
     it('createProfileDetailsCard should write SVG', async () => {
         await createProfileDetailsCard(USERNAME, TOKEN);
         // Expect writeSVG to be called for each theme (we have ~30 themes)
@@ -143,20 +104,22 @@ describe('Cards Generation (Integration)', () => {
         );
     });
 
-    it('suppresses personal and contact metadata from Profile Details output', async () => {
+    it('renders a compact chart-free public Profile Details card', async () => {
         await createProfileDetailsCard(USERNAME, TOKEN, {theme: 'dxnnystyles'});
         const svg = mockWriteSVG.mock.calls.find((call: unknown[]) => call[1] === '0-profile-details')?.[2] as string;
-        expect(svg).toContain('width="700" height="380" viewBox="0 0 700 380"');
+        expect(svg).toContain('width="700" height="200" viewBox="0 0 700 200"');
         expect(svg).toContain('aria-labelledby="gpsc-card-title gpsc-card-description"');
-        expect(svg).toContain('contributions in the last year');
-        expect(svg).toContain('font-size: 24px');
-        expect(svg).toContain('font-size: 28px');
+        expect(svg).toContain('all-time contributions, original public repositories (forks excluded), and account age');
         expect(svg).toContain('All-time');
         expect(svg).toContain('contributions');
         expect(svg).toContain('Public repos');
-        expect(svg).toContain('Joined GitHub');
+        expect(svg).toContain('(non-fork)');
+        expect(svg).toContain('GitHub account age');
+        expect(svg).toContain('500');
+        expect(svg).toContain('10');
         expect(svg).not.toMatch(/test@example\.com|Test Company|Test Location|private\.example|private_handle/i);
-        expect(svg).not.toMatch(/Email|Company|Location|Website|Twitter/i);
+        expect(svg).not.toMatch(/Email|Company|Location|Website|Twitter|monthly totals|last year|Contribution Graph/i);
+        expect(svg.match(/class="bar"/g)).toBeNull();
     });
 
     it('createReposPerLanguageCard should write SVG', async () => {
